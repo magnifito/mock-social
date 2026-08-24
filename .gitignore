@@ -32,3 +32,5 @@ htmlcov/
 # Distribution
 *.log
 ANALISIS/
+/openspec
+/.claude

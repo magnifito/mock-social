@@ -42,8 +42,18 @@ def client():
     # settings is a singleton: patch ports and DB path per test before lifespan
     http_port = _free_port()
     smtp_port = _free_port()
+    ftp_port = _free_port()
+    ftps_port = _free_port()
+    ftps_implicit_port = _free_port()
+    sftp_port = _free_port()
     cfg.settings.db_path = db_path
     cfg.settings.smtp_port = smtp_port
+    cfg.settings.ftp_port = ftp_port
+    cfg.settings.ftps_port = ftps_port
+    cfg.settings.ftps_implicit_port = ftps_implicit_port
+    cfg.settings.sftp_port = sftp_port
+    cfg.settings.ftp_data_dir = os.path.join(tmpdir, "ftp")
+    cfg.settings.sftp_data_dir = os.path.join(tmpdir, "sftp")
     os.environ["MOCKPOST_HTTP_PORT"] = str(http_port)
     os.environ["MOCKPOST_SMTP_PORT"] = str(smtp_port)
     os.environ["MOCKPOST_URL"] = f"http://127.0.0.1:{http_port}"
@@ -63,6 +73,10 @@ def client():
 
     with httpx.Client(base_url=base, timeout=10.0) as c:
         c.smtp_port = smtp_port
+        c.ftp_port = ftp_port
+        c.ftps_port = ftps_port
+        c.ftps_implicit_port = ftps_implicit_port
+        c.sftp_port = sftp_port
         yield c
 
     server.should_exit = True

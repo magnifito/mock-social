@@ -9,7 +9,7 @@ from mockpost.db import get_db
 CHANNEL_ICONS = {
     "mail": "📧", "telegram": "💬", "whatsapp": "💬", "webpush": "🔔",
     "sms": "📱", "fcm": "🔔", "apns": "🍎", "slack": "🧵", "discord": "🎮",
-    "stripe": "💳",
+    "stripe": "💳", "ftp": "📁", "sftp": "📁",
 }
 
 

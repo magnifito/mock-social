@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- FTP, FTPS (explicit and implicit) and SFTP mock servers: the login
+  username resolves the registered app (permissive by default, rejected
+  under `MOCKPOST_STRICT_AUTH`), each app gets its own filesystem-backed
+  root, and every `STOR`/`RETR`/`DELE`/`MKD`/`RMD`/`LIST` (and SFTP
+  equivalents) is recorded via the existing message store as
+  `channel="ftp"`/`"sftp"`, inspectable through `list_sent_messages`,
+  `get_message_detail` and `get_timeline_markdown` with no new tool.
+  New read-only `/panel/ftp` page and `/api/config/ftp` block.
+
 ## [0.2.1] - 2026-08-14
 
 ### Fixed

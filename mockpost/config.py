@@ -28,6 +28,58 @@ def _flag(name: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _parse_port_range(raw: str, default: tuple[int, int]) -> tuple[int, int]:
+    if raw and "-" in raw:
+        lo, hi = raw.split("-", 1)
+        if lo.strip().isdigit() and hi.strip().isdigit():
+            return int(lo), int(hi)
+    return default
+
+
+def _generate_or_load_tls_cert(cert_path: str, key_path: str) -> None:
+    """Self-signed FTPS certificate, persisted so pinning clients keep trusting it."""
+    if os.path.exists(cert_path) and os.path.exists(key_path):
+        return
+    import datetime as _dt
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "mockpost.local")])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject).issuer_name(issuer).public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(_dt.datetime.now(_dt.timezone.utc))
+        .not_valid_after(_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=3650))
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+    os.makedirs(os.path.dirname(os.path.abspath(cert_path)), exist_ok=True)
+    with open(key_path, "wb") as f:
+        f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                                   serialization.NoEncryption()))
+    with open(cert_path, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+
+
+def _generate_or_load_ssh_host_key(key_path: str) -> None:
+    """SSH host key for SFTP, persisted so a client's known_hosts stays valid."""
+    if os.path.exists(key_path):
+        return
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    os.makedirs(os.path.dirname(os.path.abspath(key_path)), exist_ok=True)
+    with open(key_path, "wb") as f:
+        f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                                   serialization.NoEncryption()))
+
+
 def _generate_vapid_keys() -> dict:
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives import serialization
@@ -56,6 +108,17 @@ class Settings:
     mockpost_url: str = "http://localhost:8090"
     # App -> SMTP port map, format "app-a:1025,app-b:1026"
     smtp_apps: dict = field(default_factory=dict)
+
+    ftp_port: int = 2121
+    ftps_port: int = 2122
+    ftps_implicit_port: int = 2123
+    sftp_port: int = 2222
+    ftp_passive_ports: tuple = (30000, 30009)
+    ftp_data_dir: str = "./data/ftp"
+    sftp_data_dir: str = "./data/sftp"
+    ftp_cert_path: str = "./data/ftp_cert.pem"
+    ftp_key_path: str = "./data/ftp_key.pem"
+    ssh_host_key_path: str = "./data/ssh_host_key"
 
     # Authentication is permissive by default: every channel takes the
     # credentials it is given, so no client needs changes. With
@@ -103,6 +166,17 @@ class Settings:
                 name, port = item.rsplit(":", 1)
                 if name and port.isdigit():
                     self.smtp_apps[name.strip()] = int(port)
+
+        self.ftp_port = int(os.environ.get("MOCKPOST_FTP_PORT", self.ftp_port))
+        self.ftps_port = int(os.environ.get("MOCKPOST_FTPS_PORT", self.ftps_port))
+        self.ftps_implicit_port = int(os.environ.get("MOCKPOST_FTPS_IMPLICIT_PORT", self.ftps_implicit_port))
+        self.sftp_port = int(os.environ.get("MOCKPOST_SFTP_PORT", self.sftp_port))
+        self.ftp_passive_ports = _parse_port_range(
+            os.environ.get("MOCKPOST_FTP_PASSIVE_PORTS", ""), self.ftp_passive_ports)
+        self.ftp_data_dir = os.environ.get("MOCKPOST_FTP_DATA_DIR", self.ftp_data_dir)
+        self.sftp_data_dir = os.environ.get("MOCKPOST_SFTP_DATA_DIR", self.sftp_data_dir)
+        _generate_or_load_tls_cert(self.ftp_cert_path, self.ftp_key_path)
+        _generate_or_load_ssh_host_key(self.ssh_host_key_path)
 
 
 settings = Settings()

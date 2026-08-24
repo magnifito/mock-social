@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}MockPost — FTP/SFTP{% endblock %}
+{% block content %}
+<h1>FTP / FTPS / SFTP files</h1>
+<p class="hint">Read-only listing per app and protocol. Log in as the app with any FTP/FTPS/SFTP client to upload — there is no upload form here.</p>
+
+{% for g in groups %}
+<section class="card">
+  <h2>{{ g.app }}</h2>
+  <h3>FTP/FTPS</h3>
+  <table class="timeline">
+    <thead><tr><th>Path</th><th>Size</th><th>Modified</th></tr></thead>
+    <tbody>
+      {% for f in g.ftp %}
+      <tr><td class="mono small">{{ f.path }}</td><td>{{ f.size }}</td><td class="mono small">{{ f.mtime }}</td></tr>
+      {% else %}
+      <tr><td colspan="3" class="empty">No files.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <h3>SFTP</h3>
+  <table class="timeline">
+    <thead><tr><th>Path</th><th>Size</th><th>Modified</th></tr></thead>
+    <tbody>
+      {% for f in g.sftp %}
+      <tr><td class="mono small">{{ f.path }}</td><td>{{ f.size }}</td><td class="mono small">{{ f.mtime }}</td></tr>
+      {% else %}
+      <tr><td colspan="3" class="empty">No files.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% else %}
+<p class="empty">No files uploaded to any app yet.</p>
+{% endfor %}
+{% endblock %}

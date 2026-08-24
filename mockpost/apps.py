@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 
-from mockpost.config import utcnow
+from mockpost.config import settings, utcnow
 from mockpost.db import get_db
 
 
@@ -96,3 +97,28 @@ async def resolve_app(channel: str, credential: str | None) -> dict | None:
         if app["creds"].get(key) == credential:
             return app
     return None
+
+
+async def resolve_app_by_login(channel: str, username: str | None) -> dict | None:
+    """Resolve the app for FTP/SFTP: the login username IS the app's name.
+
+    Returns None for an unregistered username (permissive default: still a
+    valid login, just unattributed / global storage).
+    """
+    if not username:
+        return None
+    return await get_app_by_name(username)
+
+
+def _protocol_root(base_dir: str, app_name: str | None) -> Path:
+    root = Path(base_dir) / (app_name or "_global")
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def ftp_root(app_name: str | None) -> Path:
+    return _protocol_root(settings.ftp_data_dir, app_name)
+
+
+def sftp_root(app_name: str | None) -> Path:
+    return _protocol_root(settings.sftp_data_dir, app_name)

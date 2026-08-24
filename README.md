@@ -79,6 +79,7 @@ Then open `http://localhost:8090` — the email is on the timeline, and `get_lat
 | **Facebook webhooks** | verify `http://localhost:8090/facebook/webhook?hub.mode=subscribe&hub.verify_token=...`, simulate `.../facebook/simulate` | `hub.*` challenge + `X-Hub-Signature-256` (HMAC-SHA256, app secret) |
 | **X (Twitter) webhooks** | register `http://localhost:8090/x/webhook`, CRC `.../x/webhook/crc`, simulate `.../x/simulate` | CRC `response_token` + `X-Twitter-Webhooks-Signature` (base64 HMAC-SHA256) |
 | **Google OAuth extras** | `tokeninfo` + `revoke` under `http://localhost:8090/oauth/google/...` | real Google OAuth endpoints (no webhooks by design) |
+| **FTP / FTPS / SFTP** | `localhost:2121` (FTP), `:2122` (FTPS explicit), `:2123` (FTPS implicit), `:2222` (SFTP) — log in with a registered app's name as the username, any password | `MOCKPOST_FTP_PORT`, `MOCKPOST_FTPS_PORT`, `MOCKPOST_FTPS_IMPLICIT_PORT`, `MOCKPOST_SFTP_PORT` |
 
 The `/config` page shows exact values plus copy-paste snippets per channel.
 
@@ -196,6 +197,7 @@ Each app is identified by its **fake credentials** — it sends no extra headers
 | WhatsApp phone_id | `whatsapp` |
 | FCM project_id | `fcm` |
 | SMTP port (`MOCKPOST_APPS='app-a:1025,...'`) | `mail` |
+| Login username (FTP/FTPS/SFTP) | `ftp` / `sftp` |
 
 Consequences:
 - Captured messages are tagged with their app (panel filters by app).
@@ -212,6 +214,12 @@ Consequences:
 | `MOCKPOST_SMTP_PORT` | `1025` |
 | `MOCKPOST_HOST` | `127.0.0.1` (localhost only — no auth by design) |
 | `MOCKPOST_SMTP_HOST` | `127.0.0.1` (localhost only) |
+| `MOCKPOST_FTP_PORT` | `2121` |
+| `MOCKPOST_FTPS_PORT` | `2122` (explicit `AUTH TLS`) |
+| `MOCKPOST_FTPS_IMPLICIT_PORT` | `2123` |
+| `MOCKPOST_SFTP_PORT` | `2222` |
+| `MOCKPOST_FTP_PASSIVE_PORTS` | `30000-30009` — map this range through Docker/NAT for passive FTP transfers |
+| `MOCKPOST_FTP_DATA_DIR` / `MOCKPOST_SFTP_DATA_DIR` | `./data/ftp` / `./data/sftp` |
 | `MOCKPOST_ALLOWED_WEBHOOK_HOSTS` | *(empty — all http(s) except metadata/link-local)* |
 | `MOCKPOST_APPS` | `app-a:1025,app-b:1026` (per-app SMTP) |
 | `MOCKPOST_DB_PATH` | `./data/mockpost.db` |
@@ -226,7 +234,7 @@ Consequences:
 
 ## Emulated channels
 
-Email (SMTP with AUTH, MailHog-style) · Telegram Bot API (13 methods, any body format) · WhatsApp Cloud API (any Graph version, messages + statuses) · Web Push (push service with real VAPID validation and payload decryption) · Twilio SMS (`Messages.json` + `StatusCallback`) · FCM · APNs · Slack · Discord · Stripe (checkout/payment_intents + signed `Stripe-Signature` events) · OTP (SMS/email/TOTP) · Fake OAuth2/OIDC for Google/GitHub/Facebook/X (JWT with local key) · Social webhooks (GitHub, Facebook, X) with per-provider signatures.
+Email (SMTP with AUTH, MailHog-style) · Telegram Bot API (13 methods, any body format) · WhatsApp Cloud API (any Graph version, messages + statuses) · Web Push (push service with real VAPID validation and payload decryption) · Twilio SMS (`Messages.json` + `StatusCallback`) · FCM · APNs · Slack · Discord · Stripe (checkout/payment_intents + signed `Stripe-Signature` events) · OTP (SMS/email/TOTP) · Fake OAuth2/OIDC for Google/GitHub/Facebook/X (JWT with local key) · Social webhooks (GitHub, Facebook, X) with per-provider signatures · FTP/FTPS/SFTP (per-app filesystem-backed roots, username-as-app-name login).
 
 ## Protocol fidelity
 

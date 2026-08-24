@@ -9,7 +9,7 @@ from mockpost.signing import vapid_public_key_b64
 
 router = APIRouter(prefix="/api/config", tags=["api"])
 
-CHANNELS = ("mail", "telegram", "whatsapp", "webpush", "sms", "fcm", "apns", "slack", "discord", "stripe", "oauth")
+CHANNELS = ("mail", "telegram", "whatsapp", "webpush", "sms", "fcm", "apns", "slack", "discord", "stripe", "oauth", "ftp")
 
 
 def _config() -> dict:
@@ -90,6 +90,15 @@ def _config() -> dict:
         "x": {"webhook": f"{base}/x/webhook", "crc": f"{base}/x/webhook/crc",
               "simulate": f"{base}/x/simulate",
               "note": "CRC check (crc_token -> response_token) + X-Twitter-Webhooks-Signature (base64 HMAC-SHA256)"},
+        "ftp": {"host": "127.0.0.1", "ftp_port": settings.ftp_port,
+                "ftps_explicit_port": settings.ftps_port, "ftps_implicit_port": settings.ftps_implicit_port,
+                "sftp_port": settings.sftp_port,
+                "passive_ports": f"{settings.ftp_passive_ports[0]}-{settings.ftp_passive_ports[1]}",
+                "auth": "required" if settings.strict_auth else "any",
+                "note": "Log in with a registered app's name as the username; any password is "
+                        "accepted unless MOCKPOST_STRICT_AUTH is set. FTP/FTPS share one storage "
+                        "tree per app, SFTP keeps a separate one. Passive FTP data connections use "
+                        "the configured port range, which must be mapped through Docker/NAT."},
     }
 
 

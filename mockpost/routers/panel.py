@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from mockpost.apps import list_apps
+from mockpost.config import settings
 from mockpost.request_ctx import get_test_id
 from mockpost.store import get_message, list_messages, list_webhooks
 from mockpost.timeline_builder import CHANNEL_ICONS, build_timeline, timeline_markdown
@@ -22,6 +23,7 @@ CHANNEL_NAMES = {
     "mail": "Email", "telegram": "Telegram", "whatsapp": "WhatsApp", "webpush": "Web Push",
     "sms": "SMS", "fcm": "FCM", "apns": "APNs", "slack": "Slack", "discord": "Discord",
     "stripe": "Stripe", "github": "GitHub", "facebook": "Facebook", "x": "X",
+    "ftp": "FTP/FTPS", "sftp": "SFTP",
 }
 
 # Channels that can receive webhooks back to the app (inbound/status/events).
@@ -107,6 +109,36 @@ async def webhooks_page(request: Request, channel: str | None = None, app: str |
         "names": CHANNEL_NAMES, "current_channel": channel or "",
         "apps": apps, "current_app": app or "", "app_names": {a["id"]: a["name"] for a in apps},
     })
+
+
+def _walk_root(root: str) -> list[dict]:
+    entries: list[dict] = []
+    if not os.path.isdir(root):
+        return entries
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, root)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            entries.append({"path": rel, "size": st.st_size, "mtime": st.st_mtime})
+    entries.sort(key=lambda e: e["path"])
+    return entries
+
+
+@router.get("/panel/ftp", response_class=HTMLResponse)
+async def ftp_page(request: Request):
+    apps = await list_apps()
+    app_names = ["_global"] + [a["name"] for a in apps]
+    groups = []
+    for name in app_names:
+        ftp_files = _walk_root(os.path.join(settings.ftp_data_dir, name))
+        sftp_files = _walk_root(os.path.join(settings.sftp_data_dir, name))
+        if ftp_files or sftp_files:
+            groups.append({"app": name, "ftp": ftp_files, "sftp": sftp_files})
+    return templates.TemplateResponse(request, "ftp.html", {"groups": groups})
 
 
 @router.get("/apps", response_class=HTMLResponse)

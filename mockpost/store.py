@@ -10,7 +10,7 @@ from typing import Any
 from mockpost.config import utcnow
 from mockpost.db import get_db
 
-CHANNELS = ("mail", "telegram", "whatsapp", "webpush", "sms", "fcm", "apns", "slack", "discord", "stripe")
+CHANNELS = ("mail", "telegram", "whatsapp", "webpush", "sms", "fcm", "apns", "slack", "discord", "stripe", "ftp", "sftp")
 STATUSES = ("received", "delivered", "read", "failed")
 
 # 4-8 digit OTP pattern in the message body

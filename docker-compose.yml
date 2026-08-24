@@ -4,6 +4,11 @@ services:
     ports:
       - "127.0.0.1:8090:8090"   # HTTP: emulated channels + panel + internal API (localhost only)
       - "127.0.0.1:1025:1025"   # SMTP (localhost only)
+      - "127.0.0.1:2121:2121"   # FTP control (localhost only)
+      - "127.0.0.1:2122:2122"   # FTPS explicit (AUTH TLS) (localhost only)
+      - "127.0.0.1:2123:2123"   # FTPS implicit (localhost only)
+      - "127.0.0.1:2222:2222"   # SFTP (localhost only)
+      - "127.0.0.1:30000-30009:30000-30009"   # FTP passive-mode data ports (localhost only)
     volumes:
       - ./data:/app/data   # mockpost.db persisted here
 

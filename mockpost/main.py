@@ -13,6 +13,8 @@ from fastapi.staticfiles import StaticFiles
 
 from mockpost import db
 from mockpost.config import settings
+from mockpost.ftp_server import start_ftp, stop_ftp
+from mockpost.sftp_server import start_sftp, stop_sftp
 from mockpost.smtp_server import start_smtp, stop_smtp
 from mockpost.routers import (
     api_messages, api_otp, api_oauth, api_webhooks, api_config, api_timeline, api_apps,
@@ -27,7 +29,11 @@ STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 async def lifespan(app: FastAPI):
     await db.init_db()
     await start_smtp()
+    await start_ftp()
+    await start_sftp()
     yield
+    await stop_sftp()
+    await stop_ftp()
     await stop_smtp()
     await db.close_db()
 
