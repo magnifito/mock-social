@@ -351,3 +351,12 @@ def test_carousel_rejects_duplicate_nested_and_non_string_children(client):
 def test_fixture_rejects_invalid_or_overlapping_user_id(client,user_id):
     result=client.post("/facebook/fixtures",json={"app":APP,"app_id":ID,"app_secret":SECRET,"redirect_uris":[CALLBACK],"user_id":user_id})
     assert result.status_code in {400,422}
+
+
+def test_unknown_timeline_app_never_reads_or_deletes_another_apps_messages(client):
+    fixture(client)
+    token = page_token(client)
+    assert client.post(BASE+f"/{PAGE}/feed",json={"access_token":token,"message":"Keep this capture"}).status_code == 200
+    assert client.get("/api/messages",params={"app":"missing-app"}).status_code == 404
+    assert client.delete("/api/messages",params={"app":"missing-app"}).status_code == 404
+    assert len(client.get("/api/messages",params={"app":APP}).json()) == 1

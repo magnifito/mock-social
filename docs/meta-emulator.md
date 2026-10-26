@@ -209,3 +209,8 @@ The messaging proof deliberately exercises human replies with bots disabled.
 It does not certify automated flows, AI calls, realtime events, arbitrary media
 payloads, Meta policy windows, or live delivery. These are outside this fixture's
 verified scope. Use the existing raw-event endpoint for additional contract cases.
+
+Named timeline app filters fail closed: `GET` or `DELETE /api/messages?app=<name>`
+returns 404 when that name is unknown. Omitting the filter still selects the
+global timeline. Cleanup clients must resolve their owned app before clearing
+its messages and must not replace a missing app with an unfiltered delete.

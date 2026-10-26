@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query
 
 from mockpost.apps import get_app_by_name
 from mockpost.request_ctx import get_test_id
@@ -15,7 +15,9 @@ async def _app_id_from_name(app: str | None) -> str | None:
     if not app:
         return None
     a = await get_app_by_name(app)
-    return a["id"] if a else None
+    if not a:
+        raise HTTPException(status_code=404, detail="Unknown app filter")
+    return a["id"]
 
 
 @router.get("/messages")
