@@ -1,3 +1,8 @@
+> **magnifito/mock-social fork:** includes a local Meta Graph emulator for
+> Cometmode OAuth, Facebook/Instagram publishing, Messenger/Instagram replies
+> and signed incoming messages.
+> See [the setup and test guide](docs/meta-emulator.md).
+
 # 🚌 MockPost
 
 <!-- mcp-name: io.github.reiarseni/mockpost -->

@@ -103,6 +103,7 @@ def _generate_vapid_keys() -> dict:
 class Settings:
     http_port: int = 8090
     smtp_port: int = 1025
+    http_only: bool = False
     smtp_host: str = "127.0.0.1"
     db_path: str = "./data/mockpost.db"
     mockpost_url: str = "http://localhost:8090"
@@ -150,6 +151,7 @@ class Settings:
 
     def __post_init__(self) -> None:
         self.http_port = int(os.environ.get("MOCKPOST_HTTP_PORT", self.http_port))
+        self.http_only = _flag("MOCKPOST_HTTP_ONLY", self.http_only)
         self.smtp_port = int(os.environ.get("MOCKPOST_SMTP_PORT", self.smtp_port))
         self.smtp_host = os.environ.get("MOCKPOST_SMTP_HOST", self.smtp_host)
         self.db_path = os.environ.get("MOCKPOST_DB_PATH", self.db_path)

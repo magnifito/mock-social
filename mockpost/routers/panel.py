@@ -22,7 +22,7 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 CHANNEL_NAMES = {
     "mail": "Email", "telegram": "Telegram", "whatsapp": "WhatsApp", "webpush": "Web Push",
     "sms": "SMS", "fcm": "FCM", "apns": "APNs", "slack": "Slack", "discord": "Discord",
-    "stripe": "Stripe", "github": "GitHub", "facebook": "Facebook", "x": "X",
+    "stripe": "Stripe", "github": "GitHub", "facebook": "Facebook", "instagram": "Instagram", "x": "X",
     "ftp": "FTP/FTPS", "sftp": "SFTP",
 }
 
