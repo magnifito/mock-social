@@ -54,4 +54,31 @@ for (const platform of ["FACEBOOK","INSTAGRAM"]) {
 }
 const captured=await api("/api/messages?limit=100&app="+encodeURIComponent(app));
 assert.equal(captured.length,20); // Each of 10 posts plus its first comment.
-console.log(JSON.stringify({published:count,captured:captured.length,realNetworkRequests:0,app}));
+const setScenario = async (scenario: string) => {
+  const response=await fetch(origin+"/facebook/fixtures/scenario",{method:"PUT",headers:{"Content-Type":"application/json","X-MockPost-App":app},body:JSON.stringify({scenario})});
+  assert(response.ok,await response.text());
+};
+let failed=0,recovered=0;
+for (const platform of ["FACEBOOK","INSTAGRAM"]) {
+  const id="account-"+platform;
+  const targets=[{id:"failure-target",accountId:id,postType:"FEED",content:null,mediaUrls:null,firstComment:null,thumbnailUrl:null}];
+  const accounts=[{id,platform,accountId:platform==="FACEBOOK"?page.id:page.instagram_business_account.id,accountName:"Mock "+platform,accessToken:page.access_token,isActive:true}];
+  const post={content:"Failure recovery "+platform,mediaUrls:platform==="FACEBOOK"?[]:["https://never-fetched.invalid/recovery.jpg"]};
+  for (const scenario of ["permission_denied","rate_limited","token_expired"]) {
+    const before=(await api("/api/messages?limit=100&app="+encodeURIComponent(app))).length;
+    try {
+      await setScenario(scenario);
+      const result=await publishPost(post,targets,accounts);
+      assert.equal(result.finalStatus,"FAILED",JSON.stringify(result));
+      assert(result.targetResults[0].failureReason);
+      assert.equal((await api("/api/messages?limit=100&app="+encodeURIComponent(app))).length,before);
+      failed++;
+    } finally { await setScenario("normal"); }
+    const result=await publishPost(post,targets,accounts);
+    assert.equal(result.finalStatus,"PUBLISHED",JSON.stringify(result));
+    recovered++;
+  }
+}
+const finalCaptured=await api("/api/messages?limit=100&app="+encodeURIComponent(app));
+assert.equal(finalCaptured.length,26);
+console.log(JSON.stringify({published:count,failed,recovered,captured:finalCaptured.length,realNetworkRequests:0,app}));

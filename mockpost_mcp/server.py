@@ -355,13 +355,16 @@ def get_timeline_markdown(since: str | None = None, channels: list[str] | None =
 
 @mcp.tool()
 def configure_meta_app(app: str, app_id: str, app_secret: str, redirect_uris: list[str],
-                       pages: list[dict] | None = None) -> dict:
+                       pages: list[dict] | None = None, people: list[dict] | None = None) -> dict:
     """Register a FAKE Meta app for local OAuth, Page discovery and publishing.
     No real credentials. Pages may include instagram_id and instagram_username.
-    Omitting pages creates one Page linked to one Instagram professional account."""
+    Omitting pages creates one Page linked to one Instagram professional account.
+    People declare messaging visitors with id, page_id, platform, name and username."""
     body = {"app": app, "app_id": app_id, "app_secret": app_secret, "redirect_uris": redirect_uris}
     if pages is not None:
         body["pages"] = pages
+    if people is not None:
+        body["people"] = people
     return _post("/facebook/fixtures", body)
 
 
@@ -380,6 +383,16 @@ def set_meta_scenario(scenario: str, app: str | None = None) -> dict:
 def reset_meta_app(app: str | None = None) -> dict:
     """Reset a fake app's Graph tokens and objects. Retain its captured timeline."""
     return _post("/facebook/fixtures/reset", {}, app)
+
+
+@mcp.tool()
+def simulate_meta_message(platform: str, sender_id: str, text: str, webhook_id: str,
+                          message_id: str | None = None, app: str | None = None) -> dict:
+    """Send a signed fake Messenger/Instagram message to one registered webhook.
+    The visitor must exist in the app's Meta fixture and the Page must be subscribed.
+    Reuse message_id for duplicate-event tests. Read the recorded receiver response."""
+    return _post("/facebook/simulate/message", {"platform":platform,"sender_id":sender_id,
+                 "text":text,"webhook_id":webhook_id,"message_id":message_id}, app)
 
 
 def main() -> None:

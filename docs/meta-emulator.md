@@ -112,8 +112,9 @@ secret. Call `/facebook/simulate` with `X-MockPost-App` and a Meta-shaped payloa
 The emulator sends `X-Hub-Signature-256` over the exact UTF-8 request bytes and
 records the receiver's response. Re-send the same message ID to test duplicates.
 Use the payload's `object: "instagram"` for Instagram events where the consumer
-uses the same Meta webhook transport. Cometmode's channel SDK endpoints need their
-own local routing configuration; the publishing switch alone does not redirect them.
+uses the same Meta webhook transport. Cometmode's channel SDK endpoints use
+`META_MOCK_ORIGIN` in the web/API runtime. Messenger and Instagram share this
+switch with publishing. WhatsApp keeps its normal provider URLs.
 
 ## Limits
 
@@ -143,7 +144,8 @@ RUN_META_MOCK_E2E=1 bun run e2e e2e/tests/meta-mock.e2e.ts
 ```
 
 The first command uses the actual publisher for 10 Facebook/Instagram paths and
-checks 20 captured events including first comments. It blocks all non-local
+checks 20 captured events including first comments. It then checks six failed
+sends without new captures and six recovery sends, for 26 captures in total. It blocks all non-local
 network requests in that process. It retains its uniquely named synthetic app
 and captured messages for inspection. The second uses real browser OAuth,
 local credential/account persistence and the actual publish API. It refuses to
@@ -153,3 +155,57 @@ Cometmode posts, accounts and credentials afterward. Its mock timeline remains.
 The broader inherited suite currently emits FTP worker-shutdown warnings on
 macOS. They also occur without the Meta changes. The Meta service can use
 `MOCKPOST_HTTP_ONLY=1` to avoid starting unrelated protocol listeners.
+
+## Exercise Cometmode messaging
+
+Run `uv run python scripts/setup-meta.py --messaging` to obtain a synthetic Page
+access token, verification token and declared visitor IDs. Enter these fake values
+in the existing Messenger or Instagram connection form. Use the linked Page for
+Instagram. Never enter a real Page token into this emulator.
+
+Register each callback separately through `POST /api/webhooks` with channel
+`facebook`, the fixture app name, callback URL and signing secret as `token`.
+Call `POST /facebook/simulate/message` with `X-MockPost-App` and JSON fields
+`platform` (`messenger` or `instagram`), `sender_id`, `text`, and `webhook_id`.
+Use the returned webhook ID so events reach the correct callback. The MCP tool
+`simulate_meta_message` exposes the same operation. The Page must subscribe first.
+Declared visitors support profile reads, typing actions and replies. Cross-Page
+visitors fail. Outbound messages appear in the existing timeline.
+
+To exercise the actual Cometmode connection services, webhook handlers, database
+and Inbox reply service, run from this fork with the mock active:
+
+```sh
+uv run python scripts/check-cometmode-messaging.py ../cometmode --scratch-database cometmode_chatbot_cx0_20261022
+```
+
+This check accepts only the named local scratch database on port 5544. It creates
+human-handoff conversations with the bot disabled, receives two signed messages,
+sends two replies, and checks four refusals. It replays six duplicate deliveries,
+including concurrent retries. It checks four failed sends and four recovery sends.
+It removes its own records afterward.
+It blocks non-local HTTP requests. It does not run an AI provider, background
+worker, realtime subscriber or browser. The launcher supplies empty Next.js marker
+packages in a temporary directory for the standalone Bun process.
+
+## Verified local boundaries
+
+The contract tests reject unknown message recipients, visitors from another Page,
+Messenger visitors addressed through an Instagram account, invalid or overlapping
+fixture user IDs, duplicate or nested carousel children, and repeated reel uploads.
+Declare every messaging visitor in `people` with an `id`, `page_id` and `platform`.
+Omitting `people` generates visitors for each configured Page. The
+`configure_meta_app` MCP tool accepts custom visitors too.
+
+| Path | Proof |
+| --- | --- |
+| OAuth, token isolation, publishing and media state | `tests/test_facebook_graph.py` |
+| Publisher success, permission/rate/token errors and recovery | `scripts/check-cometmode.ts` |
+| Signed inbound text, Inbox reply, duplicates and recovery | `scripts/check-cometmode-messaging.py` |
+| Browser OAuth, account persistence and publish API | Cometmode `e2e/tests/meta-mock.e2e.ts` |
+| Setup forms and localized guides | Cometmode `e2e/tests/messaging-connections.e2e.ts` and `channel-setup-guides.e2e.ts` |
+
+The messaging proof deliberately exercises human replies with bots disabled.
+It does not certify automated flows, AI calls, realtime events, arbitrary media
+payloads, Meta policy windows, or live delivery. These are outside this fixture's
+verified scope. Use the existing raw-event endpoint for additional contract cases.

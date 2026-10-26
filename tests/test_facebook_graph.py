@@ -14,7 +14,7 @@ SECRET = "syntheticSecret123456"
 CALLBACK = "http://localhost:3200/api/social/auth/callback/facebook"
 PAGE = "100000000001"
 IG = "200000000001"
-SCOPE = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,pages_messaging,pages_manage_metadata"
+SCOPE = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,pages_messaging,pages_manage_metadata,instagram_manage_messages"
 BASE = "/facebook/v19.0"
 
 
@@ -136,8 +136,8 @@ def test_reel_hosted_upload_and_comment(client):
 def test_basic_messenger_and_app_isolation(client):
     fixture(client)
     token = page_token(client)
-    sent = client.post(BASE + f"/{PAGE}/messages", json={"recipient":{"id":"psid1"},"message":{"text":"Hello"},"access_token":token})
-    assert sent.json()["recipient_id"] == "psid1"
+    sent = client.post(BASE + f"/{PAGE}/messages", json={"recipient":{"id":"400000000001"},"message":{"text":"Hello"},"access_token":token})
+    assert sent.json()["recipient_id"] == "400000000001"
     fixture(client, app="other", app_id="87654321", pages=[{"id":"100000000002","name":"Other page"}])
     assert client.get(BASE + "/100000000002", params={"access_token":token}).status_code == 400
     assert client.get("/api/messages", params={"app":"other"}).json() == []
@@ -261,3 +261,93 @@ def test_malformed_controls_and_graph_tokens_return_errors(client):
     assert client.post(BASE+"/oauth/access_token",json={"client_id":ID,"client_secret":SECRET,"code":[],"redirect_uri":CALLBACK}).status_code == 400
     assert client.put("/facebook/fixtures/scenario",headers={"X-MockPost-App":APP},json={"scenario":{}}).status_code == 400
     assert client.put("/facebook/fixtures/media/missing",headers={"X-MockPost-App":APP},json={"status_code":{}}).status_code == 400
+
+
+def test_channel_profile_and_instagram_send_via_page_token(client):
+    fixture(client)
+    token = page_token(client)
+    profile = client.get(BASE+"/me",params={"access_token":token}).json()
+    assert profile["instagram_business_account"]["id"] == IG
+    for person in ["400000000001","500000000001"]:
+        assert client.get(BASE+"/"+person,params={"access_token":token}).json()["name"].startswith("Mock")
+    for platform, person in [("facebook","400000000001"),("instagram","500000000001")]:
+        action = client.post(BASE+"/me/messages",json={"access_token":token,"recipient":{"id":person},"sender_action":"typing_on"})
+        assert action.status_code == 200
+        sent = client.post(BASE+"/me/messages",json={"access_token":token,"recipient":{"id":person},"message":{"text":"Channel test"}})
+        assert sent.status_code == 200
+        assert len(client.get("/api/messages",params={"app":APP,"channel":platform}).json()) == 1
+
+
+def test_visitor_profile_and_send_are_page_scoped(client):
+    fixture(client,pages=[{"id":PAGE,"name":"First"},{"id":"100000000002","name":"Second"}])
+    token = page_token(client)
+    assert client.get(BASE+"/400000000002",params={"access_token":token}).status_code == 403
+    assert client.post(BASE+"/me/messages",json={"access_token":token,"recipient":{"id":"400000000002"},"message":{"text":"Denied"}}).status_code == 403
+
+
+def test_high_level_inbound_uses_selected_webhook_and_requires_subscription(client):
+    received = []
+    class Receiver(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body=self.rfile.read(int(self.headers["Content-Length"]))
+            assert self.headers["X-Hub-Signature-256"] == "sha256="+hmac.new(SECRET.encode(),body,hashlib.sha256).hexdigest()
+            received.append((self.path,json.loads(body)))
+            self.send_response(200);self.end_headers();self.wfile.write(b"ok")
+        def log_message(self,*args): pass
+    server=HTTPServer(("127.0.0.1",0),Receiver)
+    thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+        fixture(client)
+        token=page_token(client)
+        webhook=client.post("/api/webhooks",json={"app":APP,"channel":"facebook","token":SECRET,"target_url":f"http://127.0.0.1:{server.server_port}/chosen"}).json()["id"]
+        client.post("/api/webhooks",json={"app":APP,"channel":"facebook","token":SECRET,"target_url":f"http://127.0.0.1:{server.server_port}/other"})
+        body={"platform":"instagram","sender_id":"500000000001","text":"Здравей","webhook_id":webhook,"message_id":"mid.stable"}
+        headers={"X-MockPost-App":APP}
+        assert client.post("/facebook/simulate/message",headers=headers,json=body).status_code == 409
+        client.post(BASE+"/me/subscribed_apps",json={"access_token":token})
+        result=client.post("/facebook/simulate/message",headers=headers,json=body)
+        assert result.status_code == 200
+        assert result.json()["delivered"]["response_code"] == 200
+        assert received[0][0] == "/chosen"
+        assert received[0][1]["object"] == "instagram"
+        assert received[0][1]["entry"][0]["messaging"][0]["message"]["mid"] == "mid.stable"
+        body["webhook_id"]="foreign"
+        assert client.post("/facebook/simulate/message",headers=headers,json=body).status_code == 404
+    finally:
+        server.shutdown();server.server_close();thread.join(timeout=2)
+
+
+def test_messages_reject_unknown_or_wrong_platform_recipients(client):
+    fixture(client)
+    token = page_token(client)
+    for path, recipient in [("/me/messages", "999999999999"), (f"/{IG}/messages", "400000000001")]:
+        result = client.post(BASE+path,json={"access_token":token,"recipient":{"id":recipient},"message":{"text":"Invalid recipient"}})
+        assert result.status_code == 400
+    assert client.get("/api/messages",params={"app":APP}).json() == []
+
+
+def test_reel_upload_replay_fails_after_upload_and_publication(client):
+    fixture(client)
+    token = page_token(client)
+    video = client.post(BASE+f"/{PAGE}/video_reels",json={"access_token":token,"upload_phase":"start"}).json()
+    headers={"Authorization":"OAuth "+token,"file_url":"https://never-fetched.invalid/a.mp4"}
+    assert client.post(video["upload_url"],headers=headers).status_code == 200
+    assert client.post(video["upload_url"],headers=headers).status_code == 400
+    assert client.post(BASE+f"/{PAGE}/video_reels",json={"access_token":token,"upload_phase":"finish","video_id":video["video_id"]}).status_code == 200
+    assert client.post(video["upload_url"],headers=headers).status_code == 400
+
+
+def test_carousel_rejects_duplicate_nested_and_non_string_children(client):
+    fixture(client)
+    token = page_token(client)
+    children=[client.post(BASE+f"/{IG}/media",json={"access_token":token,"image_url":"https://never-fetched.invalid/a.jpg"}).json()["id"] for _ in range(2)]
+    parent=client.post(BASE+f"/{IG}/media",json={"access_token":token,"media_type":"CAROUSEL","children":children}).json()["id"]
+    for invalid in [[children[0],children[0]],[parent,children[0]],[{},children[0]]]:
+        result=client.post(BASE+f"/{IG}/media",json={"access_token":token,"media_type":"CAROUSEL","children":invalid})
+        assert result.status_code == 400
+
+
+@pytest.mark.parametrize("user_id",["not-numeric",PAGE,IG])
+def test_fixture_rejects_invalid_or_overlapping_user_id(client,user_id):
+    result=client.post("/facebook/fixtures",json={"app":APP,"app_id":ID,"app_secret":SECRET,"redirect_uris":[CALLBACK],"user_id":user_id})
+    assert result.status_code in {400,422}

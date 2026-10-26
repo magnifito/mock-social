@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import secrets
 import time
+from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Request
@@ -47,6 +48,14 @@ class PageFixture(BaseModel):
     instagram_username: str = "mock_instagram"
 
 
+class PersonFixture(BaseModel):
+    id: str = Field(pattern=r"^[0-9]{5,40}$")
+    page_id: str = Field(pattern=r"^[0-9]{5,40}$")
+    platform: Literal["messenger", "instagram"]
+    name: str = "Mock Visitor"
+    username: str = "mock_visitor"
+
+
 class Fixture(BaseModel):
     app: str = Field(min_length=1)
     app_id: str = Field(pattern=r"^[0-9]{5,40}$")
@@ -54,7 +63,8 @@ class Fixture(BaseModel):
     redirect_uris: list[str] = Field(min_length=1, max_length=20)
     pages: list[PageFixture] = Field(default_factory=lambda: [PageFixture(
         id="100000000001", name="Mock Facebook Page", instagram_id="200000000001")], max_length=100)
-    user_id: str = "300000000001"
+    people: list[PersonFixture] | None = Field(default=None, max_length=200)
+    user_id: str = Field(default="300000000001", pattern=r"^[0-9]{5,40}$")
     scenario: str = "normal"
 
     @field_validator("scenario")
@@ -89,9 +99,24 @@ async def configure(payload: Fixture):
         if app["name"] != payload.app and app["creds"].get("meta", {}).get("app_id") == payload.app_id:
             raise MetaError("This fake client ID belongs to another app")
     data = payload.model_dump(exclude={"app"})
+    if any(data["user_id"] in {page["id"], page.get("instagram_id")} for page in data["pages"]):
+        raise MetaError("User ID must be distinct from Page and Instagram IDs")
+    if data["people"] is None:
+        data["people"] = [{"id": str(int(page["id"]) + offset), "page_id": page["id"],
+                           "platform": platform, "name": f"Mock {platform.title()} Visitor", "username": "mock_visitor"}
+                          for page in data["pages"] for platform, offset in [("messenger", 300000000000), ("instagram", 400000000000)]
+                          if platform != "instagram" or page.get("instagram_id")]
+    ids = [person["id"] for person in data["people"]]
+    account_ids = {data["user_id"], *[p["id"] for p in data["pages"]], *[p["instagram_id"] for p in data["pages"] if p.get("instagram_id")]}
+    if len(ids) != len(set(ids)) or set(ids) & account_ids:
+        raise MetaError("Visitor IDs must be unique and distinct from account IDs")
+    for person in data["people"]:
+        page = next((p for p in data["pages"] if p["id"] == person["page_id"]), None)
+        if not page or (person["platform"] == "instagram" and not page.get("instagram_id")):
+            raise MetaError("Each visitor requires an accessible Page and linked Instagram account")
     app = await upsert_app(payload.app, {"meta": data})
     return {"app": app["name"], "app_id": payload.app_id, "pages": data["pages"],
-            "scenario": payload.scenario, "note": "Local simulation only; use fake credentials."}
+            "people": data["people"], "scenario": payload.scenario, "note": "Local simulation only; use fake credentials."}
 
 
 async def explicit_app(request):
@@ -362,11 +387,26 @@ async def graph_edge(version: str, identity: str, edge: str, request: Request):
     if request.method != "POST":
         raise MetaError("Unsupported Graph operation")
     if edge == "messages":
-        require(grant, "instagram_manage_messages" if kind == "instagram" else "pages_messaging")
         recipient = data.get("recipient")
         message = data.get("message")
-        if not isinstance(recipient, dict) or not recipient.get("id") or not isinstance(message, dict) or not message:
-            raise MetaError("recipient.id and message are required")
+        if not isinstance(recipient, dict) or not isinstance(recipient.get("id"), str) or not recipient["id"]:
+            raise MetaError("recipient.id is required")
+        person = next((p for p in fixture.get("people", []) if p["id"] == recipient["id"]), None)
+        if person:
+            if person["page_id"] != page["id"]:
+                raise MetaError("Recipient belongs to another Page", 200, 403)
+            if kind == "instagram" and person["platform"] != "instagram":
+                raise MetaError("Recipient belongs to another messaging platform")
+            if person["platform"] == "instagram":
+                kind, owner = "instagram", page["instagram_id"]
+        else:
+            raise MetaError("Unknown messaging recipient; declare the visitor in the fixture")
+        require(grant, "instagram_manage_messages" if kind == "instagram" else "pages_messaging")
+        action = data.get("sender_action")
+        if isinstance(action, str) and action in {"typing_on", "typing_off", "mark_seen"} and message is None:
+            return {"recipient_id": recipient["id"]}
+        if not isinstance(message, dict) or not message:
+            raise MetaError("message or a supported sender_action is required")
         identity = await save_object(app, owner, "message", {"recipient": recipient, "message": message})
         await capture(request, app, owner, "message", {"recipient": recipient["id"], "message": message}, identity)
         return {"recipient_id": recipient["id"], "message_id": "mid." + identity}
@@ -378,10 +418,14 @@ async def graph_edge(version: str, identity: str, edge: str, request: Request):
             children = data["children"] if isinstance(data["children"], list) else str(data["children"]).split(",")
             if not 2 <= len(children) <= 10:
                 raise MetaError("Carousel requires 2 to 10 children")
+            if any(not isinstance(child, str) or not child for child in children) or len(children) != len(set(children)):
+                raise MetaError("Carousel children must be distinct container IDs")
             for child in children:
-                obj = await object_for(str(child), app["id"])
+                obj = await object_for(child, app["id"])
                 if not obj or obj["owner_id"] != owner or obj["kind"] != "container":
                     raise MetaError("Unknown carousel child")
+                if json.loads(obj["data"]).get("children"):
+                    raise MetaError("A carousel cannot contain another carousel")
         status = {"media_processing": "IN_PROGRESS", "media_error": "ERROR"}.get(fixture["scenario"], "FINISHED")
         identity = await save_object(app, owner, "container", {k: v for k, v in data.items() if k != "access_token"}, status)
         return {"id": identity}
@@ -472,8 +516,11 @@ async def upload(identity: str, request: Request):
     require(grant, "pages_manage_posts")
     if not request.headers.get("file_url"):
         raise MetaError("Hosted upload requires file_url")
-    await get_db().execute("UPDATE facebook_objects SET status='UPLOADED' WHERE id=? AND status='WAITING_UPLOAD'", (identity,))
+    cur = await get_db().execute("UPDATE facebook_objects SET status='UPLOADED' WHERE id=? AND app_id=? AND status='WAITING_UPLOAD' RETURNING id", (identity, app["id"]))
+    claimed = await cur.fetchone()
     await get_db().commit()
+    if not claimed:
+        raise MetaError("Video upload is already complete")
     return {"success": True}
 
 
@@ -504,6 +551,54 @@ async def graph_node(version: str, identity: str, request: Request):
     if obj:
         owns(grant, obj["owner_id"], app)
         return {"id": identity, "status_code": await container_status(obj, app["id"]) if obj["kind"] == "container" else obj["status"], **json.loads(obj["data"])}
+    person = next((p for p in app["creds"]["meta"].get("people", []) if p["id"] == identity), None)
+    if person:
+        owns(grant, person["page_id"], app)
+        require(grant, "instagram_manage_messages" if person["platform"] == "instagram" else "pages_messaging")
+        first, _, last = person["name"].partition(" ")
+        return {"id": identity, "name": person["name"], "first_name": first, "last_name": last,
+                "username": person["username"], "locale": "en_US", "timezone": 0}
     kind, page = owns(grant, identity, app)
     require(grant, "instagram_basic" if kind == "instagram" else "pages_read_engagement")
-    return {"id": identity, "name": page["name"], **({"username": page["instagram_username"]} if kind == "instagram" else {})}
+    return {"id": identity, "name": page["name"], **({"username": page["instagram_username"]} if kind == "instagram" else
+            {"instagram_business_account": {"id": page["instagram_id"], "username": page["instagram_username"]}} if page.get("instagram_id") else {})}
+
+
+class IncomingMessage(BaseModel):
+    platform: Literal["messenger", "instagram"]
+    sender_id: str
+    text: str = Field(min_length=1, max_length=10000)
+    message_id: str | None = Field(default=None, max_length=200)
+    webhook_id: str
+
+
+@router.post("/simulate/message")
+async def simulate_message(payload: IncomingMessage, request: Request):
+    from mockpost.routers.social import _deliver_social
+    from mockpost.signing import facebook_signature
+    app = await explicit_app(request)
+    fixture = app["creds"]["meta"]
+    person = next((p for p in fixture.get("people", []) if p["id"] == payload.sender_id and p["platform"] == payload.platform), None)
+    if not person:
+        raise MetaError("Unknown visitor for this platform")
+    page = next(p for p in fixture["pages"] if p["id"] == person["page_id"])
+    cur = await get_db().execute("SELECT id FROM facebook_objects WHERE app_id=? AND owner_id=? AND kind='subscription'", (app["id"], page["id"]))
+    if not await cur.fetchone():
+        raise MetaError("Page is not subscribed", status=409)
+    cur = await get_db().execute("SELECT * FROM webhooks_registry WHERE id=? AND app_id=? AND channel='facebook'", (payload.webhook_id, app["id"]))
+    webhook = await cur.fetchone()
+    if not webhook:
+        raise MetaError("Webhook does not belong to this fake app", status=404)
+    recipient = page["id"] if payload.platform == "messenger" else page["instagram_id"]
+    mid = payload.message_id or "mid.mock." + secrets.token_hex(16)
+    timestamp = int(time.time() * 1000)
+    event = {"object": "page" if payload.platform == "messenger" else "instagram", "entry": [{"id": recipient,
+             "time": timestamp, "messaging": [{"sender": {"id": person["id"]}, "recipient": {"id": recipient},
+             "timestamp": timestamp, "message": {"mid": mid, "text": payload.text}}]}]}
+    body = json.dumps(event, ensure_ascii=False)
+    signature = facebook_signature(body, webhook["token"] or fixture["app_secret"])
+    result = await _deliver_social("facebook", "facebook", "messages", event, request, signature, webhook_id=webhook["id"])
+    await insert_message("facebook" if payload.platform == "messenger" else "instagram", "inbound", payload.text,
+                         sender=person["id"], recipient=recipient, app_id=app["id"], test_id=get_test_id(request),
+                         raw_payload=event, meta={"message_id": mid, "operation": "inbound"})
+    return {"message_id": mid, "delivered": result}

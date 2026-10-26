@@ -57,15 +57,15 @@ async def _secret_for(app_id: str, provider: str) -> str:
 
 
 async def _deliver_social(channel: str, provider: str, event_type: str,
-                          payload: dict, request: Request, signature: str) -> dict:
+                          payload: dict, request: Request, signature: str, webhook_id: str | None = None) -> dict:
     """Deliver the event to the registered webhook of that channel for the active app."""
     app_id = await get_app_id(request)
     if not app_id:
         raise HTTPException(status_code=400, detail="header X-MockPost-App required to deliver a social webhook")
     db = get_db()
     cur = await db.execute(
-        "SELECT * FROM webhooks_registry WHERE channel=? AND app_id=? ORDER BY created_at DESC LIMIT 1",
-        (channel, app_id))
+        "SELECT * FROM webhooks_registry WHERE channel=? AND app_id=?" + (" AND id=?" if webhook_id else "") + " ORDER BY created_at DESC LIMIT 1",
+        (channel, app_id, webhook_id) if webhook_id else (channel, app_id))
     row = await cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"no {channel} webhook registered for this app")
