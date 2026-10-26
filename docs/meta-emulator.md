@@ -138,7 +138,7 @@ permissions, provider errors, revocation, subscriptions and signed webhook bytes
 With the mock running, execute from the Cometmode checkout:
 
 ```sh
-META_MOCK_ORIGIN=http://127.0.0.1:3205 bun --tsconfig-override apps/web/tsconfig.json ../mock-social/scripts/check-cometmode.ts .
+META_MOCK_ORIGIN=http://127.0.0.1:3205 bun --cwd apps/web ../../../mock-social/scripts/check-cometmode.ts ../..
 RUN_META_MOCK_E2E=1 bun run e2e e2e/tests/meta-mock.e2e.ts
 ```
 
