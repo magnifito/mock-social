@@ -353,6 +353,35 @@ def get_timeline_markdown(since: str | None = None, channels: list[str] | None =
         return c.get(f"{BASE_URL}/api/timeline/markdown", params=params, headers=_headers()).text
 
 
+@mcp.tool()
+def configure_meta_app(app: str, app_id: str, app_secret: str, redirect_uris: list[str],
+                       pages: list[dict] | None = None) -> dict:
+    """Register a FAKE Meta app for local OAuth, Page discovery and publishing.
+    No real credentials. Pages may include instagram_id and instagram_username.
+    Omitting pages creates one Page linked to one Instagram professional account."""
+    body = {"app": app, "app_id": app_id, "app_secret": app_secret, "redirect_uris": redirect_uris}
+    if pages is not None:
+        body["pages"] = pages
+    return _post("/facebook/fixtures", body)
+
+
+@mcp.tool()
+def set_meta_scenario(scenario: str, app: str | None = None) -> dict:
+    """Set normal, cancel_login, no_pages, token_expired, permission_denied,
+    rate_limited, media_processing or media_error for a configured fake app."""
+    with httpx.Client(timeout=TIMEOUT) as c:
+        response = c.put(f"{BASE_URL}/facebook/fixtures/scenario",
+                         json={"scenario": scenario}, headers=_headers(app))
+        response.raise_for_status()
+        return response.json()
+
+
+@mcp.tool()
+def reset_meta_app(app: str | None = None) -> dict:
+    """Reset a fake app's Graph tokens and objects. Retain its captured timeline."""
+    return _post("/facebook/fixtures/reset", {}, app)
+
+
 def main() -> None:
     mcp.run(transport="stdio")
 

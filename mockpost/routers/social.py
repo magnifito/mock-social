@@ -69,8 +69,13 @@ async def _deliver_social(channel: str, provider: str, event_type: str,
     row = await cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"no {channel} webhook registered for this app")
+    signature_header = {"facebook": "X-Hub-Signature-256", "github": "X-Hub-Signature-256",
+                        "x": "X-Twitter-Webhooks-Signature"}[provider]
+    headers = {"X-MockPost-App": app_id, signature_header: signature}
+    if provider == "github":
+        headers["X-GitHub-Event"] = event_type
     return await deliver_webhook(channel, row["target_url"], event_type, payload,
-                                 headers={"X-MockPost-App": app_id, "X-Social-Signature": signature},
+                                 raw_json=json.dumps(payload, ensure_ascii=False), headers=headers,
                                  test_id=get_test_id(request), app_id=app_id)
 
 

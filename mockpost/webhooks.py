@@ -69,6 +69,7 @@ async def deliver_webhook(
     test_id: str | None = None,
     app_id: str | None = None,
     form: bool = False,
+    raw_json: str | None = None,
 ) -> dict:
     """POST the event to target_url and record the result in webhook_events
     (response code + body returned by the app, or an error if it was down).
@@ -82,7 +83,10 @@ async def deliver_webhook(
     try:
         _validate_webhook_url(target_url)
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False) as client:
-            if form:
+            if raw_json is not None:
+                resp = await client.post(target_url, content=raw_json.encode("utf-8"),
+                                         headers={"Content-Type": "application/json", **(headers or {})})
+            elif form:
                 resp = await client.post(target_url, data=payload, headers=headers or {})
             else:
                 resp = await client.post(target_url, json=payload, headers=headers or {})

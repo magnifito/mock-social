@@ -111,6 +111,24 @@ CREATE TABLE IF NOT EXISTS oauth_sessions (
     expires_at         TEXT
 );
 
+CREATE TABLE IF NOT EXISTS facebook_tokens (
+    token TEXT PRIMARY KEY,
+    app_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    scopes TEXT NOT NULL,
+    expires_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS facebook_objects (
+    id TEXT PRIMARY KEY,
+    app_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    data TEXT NOT NULL,
+    status TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_facebook_objects_app ON facebook_objects(app_id, owner_id);
+
 CREATE TABLE IF NOT EXISTS stripe_events (
     id            TEXT PRIMARY KEY,
     test_id       TEXT,
